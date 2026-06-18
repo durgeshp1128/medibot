@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+qdrant-client
+langchain
+torch
+sentence-transformers
+rank_bm25
+docling
+pypdf
+python-dotenv
+pyjwt
+sqlalchemy
+pandas
