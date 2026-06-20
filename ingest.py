@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from docling.document_converter import DocumentConverter
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
+from pypdf import PdfReader
 
 # Load environment variables (optional)
 from dotenv import load_dotenv
@@ -56,6 +57,9 @@ def hierarchical_chunk(document_path: Path) -> List[Dict[str, Any]]:
         converter = DocumentConverter()
         conversion_result = converter.convert(str(document_path))
         doc = conversion_result.document
+
+        print(f"doc === {doc}")
+        
         chunks: List[Dict[str, Any]] = []
         def walk(node, parent_title=""):
             title = getattr(node, "title", parent_title) or parent_title
@@ -77,7 +81,6 @@ def hierarchical_chunk(document_path: Path) -> List[Dict[str, Any]]:
     except Exception as e:
         # Fallback for PDFs using PyPDF
         if document_path.suffix.lower() == ".pdf":
-            from pypdf import PdfReader
             reader = PdfReader(str(document_path))
             chunks = []
             for i, page in enumerate(reader.pages):
@@ -95,19 +98,20 @@ def hierarchical_chunk(document_path: Path) -> List[Dict[str, Any]]:
                     })
             return chunks
         # Fallback for markdown or other text files
-        else:
-            with open(document_path, "r", encoding="utf-8") as f:
-                text = f.read()
-            return [{
-                "text": text,
-                "metadata": {
-                    "source_document": document_path.name,
-                    "collection": collection_name,
-                    "access_roles": access_roles,
-                    "section_title": "Document",
-                    "chunk_type": "text"
-                }
-            }]
+        # else:
+        #     with open(document_path, "r", encoding="utf-8") as f:
+        #         text = f.read()
+        #     return [{
+        #         "text": text,
+        #         "metadata": {
+        #             "source_document": document_path.name,
+        #             "collection": collection_name,
+        #             "access_roles": access_roles,
+        #             "section_title": "Document",
+        #             "chunk_type": "text"
+        #         }
+        #     }]
+        raise NotImplementedError(f"Unsupported file type: {document_path.suffix}")
 
 
 def embed_chunks(chunks: List[Dict[str, Any]]) -> List[PointStruct]:
@@ -150,6 +154,7 @@ def ingest_data(data_root: Path):
                 print(f"Skipping {file_path} due to permission error: {perm_err}")
                 continue
     # Upsert in batches to avoid overload
+    print(f"all points {len(all_points)}")
     batch_size = 5000
     for i in range(0, len(all_points), batch_size):
         batch = all_points[i:i+batch_size]
@@ -158,5 +163,5 @@ def ingest_data(data_root: Path):
     print("Ingestion complete.")
 
 if __name__ == "__main__":
-    DATA_ROOT = Path(__file__).parent / "data"
+    DATA_ROOT = Path(__file__).parent / "data" / "source_documents"
     ingest_data(DATA_ROOT)
