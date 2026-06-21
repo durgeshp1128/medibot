@@ -1,5 +1,7 @@
-
 from fastapi import FastAPI, Depends, HTTPException, status
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel

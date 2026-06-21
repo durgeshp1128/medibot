@@ -1,6 +1,7 @@
 from sql_rag import _call_llm
 from sql_rag import sql_rag_chain
 from retrieval import hybrid_retriever
+from rerank import rerank
 import os
 from dotenv import load_dotenv
 
@@ -49,8 +50,8 @@ def process_chat(message: dict, user: dict) -> dict:
         if not candidates:
             return {"answer": "I couldn't find relevant information.", "sources": [], "retrieval_type": "hybrid_rag", "role": role}
 
-        # Simple reranking: take top 3 by score
-        top_candidates = sorted(candidates, key=lambda x: x.get("score", 0), reverse=True)[:3]
+        # Rerank candidates using CrossEncoder reranker
+        top_candidates = rerank(user_msg, candidates, top_k=3)
         # Build combined context for LLM
         context_texts = [c.get("text", "") for c in top_candidates]
         combined_context = "\n---\n".join(context_texts)

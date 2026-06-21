@@ -14,29 +14,35 @@ import re
 import json
 import sqlite3
 from typing import List, Dict, Any
+from dotenv import load_dotenv
+load_dotenv()
 
-# LLM client – placeholder; replace with your actual provider (OpenAI, Anthropic, etc.)
+
+# ChatGroq LLM integration
 try:
-    import openai
+    from langchain_groq import ChatGroq
+    from langchain_core.messages import SystemMessage, HumanMessage
 except ImportError as e:
-    raise ImportError("Please install the OpenAI SDK in the virtual environment (pip install openai).")
+    raise ImportError("Please install langchain-groq: pip install langchain-groq")
 
-# Model name can be overridden via env var
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+# Initialize ChatGroq
+GROQ_MODEL = "openai/gpt-oss-20b"
+llm = ChatGroq(
+    temperature=0,
+    model_name=GROQ_MODEL,
+    api_key=os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY")
+)
 
 def _call_llm(prompt: str) -> str:
-    """Wrap OpenAI ChatCompletion call.
+    """Wrap Groq ChatCompletion call using LangChain.
     Returns the raw assistant content.
     """
-    response = openai.ChatCompletion.create(
-        model=OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": "You translate a natural‑language question into a valid SQLite query. Return only the SQL, without any explanation or markdown fences."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0,
-    )
-    return response.choices[0].message.content.strip()
+    messages = [
+        SystemMessage(content="You translate a natural‑language question into a valid SQLite query. Return only the SQL, without any explanation or markdown fences."),
+        HumanMessage(content=prompt)
+    ]
+    response = llm.invoke(messages)
+    return response.content.strip()
 
 def _extract_sql(raw: str) -> str:
     """Strip markdown fences and surrounding text, leaving just the SQL statement."""
@@ -62,7 +68,7 @@ def sql_rag_chain(question: str, role: str) -> str:
     sql = _extract_sql(raw_sql)
 
     # 2️⃣ Execute the SQL safely
-    db_path = os.path.join(os.path.dirname(__file__), "data", "mediassist.db")
+    db_path = os.path.join(os.path.dirname(__file__), "data", "db", "mediassist.db")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -83,6 +89,8 @@ def sql_rag_chain(question: str, role: str) -> str:
 
 if __name__ == "__main__":
     # Demo – replace with real credentials / role
-    demo_q = "How many billing claims were escalated last month?"
+    #  demo_q = "which medical equipment models break down the most frequently and group them by fault codes."
+    demo_q = "calculates the total money claimed versus approved."
+    # demo_q = "which diagnosis codes or claim types trigger the most frequent claim rejections by insurance companies?"
     demo_role = "billing_executive"
     print(sql_rag_chain(demo_q, demo_role))

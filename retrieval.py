@@ -63,14 +63,16 @@ def hybrid_retriever(query: str, role: str, top_k: int = 10) -> List[Dict[str, A
 
     query_vec = _dense_embedding(query)
 
-    hits = client.search(
+    response = client.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_vec,
+        query=query_vec,
         limit=top_k,
         query_filter=_role_filter(role),
     )
 
     candidates: List[Dict[str, Any]] = []
+    # Extract the actual list of points from the response object
+    hits = response.points
     for hit in hits:
         payload = hit.payload or {}
         candidates.append(

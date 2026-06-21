@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 from docling.document_converter import DocumentConverter
+from docling.chunking import HybridChunker
+from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 from pypdf import PdfReader
@@ -15,6 +17,9 @@ load_dotenv()
 # Use Qdrant local storage (no external server needed)
 QDRANT_LOCAL_PATH = os.getenv("QDRANT_LOCAL_PATH", "./qdrant_storage")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "medibot_chunks")
+
+EMBEDDING_MODEL_NAME = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+embedder = SentenceTransformer(EMBEDDING_MODEL_NAME)
 
 # Role to collection mapping (based on assignment spec)
 COLLECTION_ROLE_MAP = {
@@ -46,39 +51,53 @@ def get_role_info(folder_name: str) -> Dict[str, Any]:
 
 def hierarchical_chunk(document_path: Path) -> List[Dict[str, Any]]:
     """Parse a PDF/Markdown file and return hierarchical chunks.
-    Tries to use Docling; if unavailable, falls back to simple PyPDF text extraction.
+    Uses Docling's HybridChunker; if unavailable/fails, falls back to simple PyPDF text extraction.
     """
     folder_name = document_path.parent.name
     info = get_role_info(folder_name)
     collection_name = info["collection"]
     access_roles = info["access_roles"]
-    # Try Docling first
+    
+    # Try Docling and HybridChunker first
     try:
         converter = DocumentConverter()
         conversion_result = converter.convert(str(document_path))
         doc = conversion_result.document
 
-        print(f"doc === {doc}")
+        chunker = HybridChunker(
+            tokenizer=EMBEDDING_MODEL_NAME,
+            max_tokens=256
+        )
+        doc_chunks = list(chunker.chunk(doc))
         
         chunks: List[Dict[str, Any]] = []
-        def walk(node, parent_title=""):
-            title = getattr(node, "title", parent_title) or parent_title
-            if hasattr(node, "text") and node.text:
-                chunks.append({
-                    "text": node.text,
-                    "metadata": {
-                        "source_document": document_path.name,
-                        "collection": collection_name,
-                        "access_roles": access_roles,
-                        "section_title": title,
-                        "chunk_type": "text"
-                    }
-                })
-            for child in getattr(node, "children", []):
-                walk(child, title)
-        walk(doc)
+        for chunk in doc_chunks:
+            headings = []
+            if hasattr(chunk, "meta") and chunk.meta is not None:
+                headings = getattr(chunk.meta, "headings", []) or []
+            
+            # Format chunk text by prepending parent section headings as context
+            if headings:
+                context_prefix = " > ".join(headings)
+                chunk_text = f"Context: {context_prefix}\n\n{chunk.text}"
+                section_title = headings[-1]
+            else:
+                chunk_text = chunk.text
+                section_title = "Document"
+                
+            chunks.append({
+                "text": chunk_text,
+                "metadata": {
+                    "source_document": document_path.name,
+                    "collection": collection_name,
+                    "access_roles": access_roles,
+                    "section_title": section_title,
+                    "chunk_type": "text"
+                }
+            })
         return chunks
     except Exception as e:
+        print(f"Docling parsing failed for {document_path}: {e}. Falling back...")
         # Fallback for PDFs using PyPDF
         if document_path.suffix.lower() == ".pdf":
             reader = PdfReader(str(document_path))
@@ -97,41 +116,39 @@ def hierarchical_chunk(document_path: Path) -> List[Dict[str, Any]]:
                         }
                     })
             return chunks
-        # Fallback for markdown or other text files
-        # else:
-        #     with open(document_path, "r", encoding="utf-8") as f:
-        #         text = f.read()
-        #     return [{
-        #         "text": text,
-        #         "metadata": {
-        #             "source_document": document_path.name,
-        #             "collection": collection_name,
-        #             "access_roles": access_roles,
-        #             "section_title": "Document",
-        #             "chunk_type": "text"
-        #         }
-        #     }]
-        raise NotImplementedError(f"Unsupported file type: {document_path.suffix}")
+        raise NotImplementedError(f"Unsupported file type for fallback: {document_path.suffix}")
 
-
-def embed_chunks(chunks: List[Dict[str, Any]]) -> List[PointStruct]:
-    """Generate placeholder embeddings (replace with real model later) and build Qdrant points."""
+def embed_chunks(chunks: List[Dict[str, Any]], start_id: int) -> List[PointStruct]:
+    """Generate real embeddings using SentenceTransformer and build Qdrant points."""
     points = []
-    for idx, chunk in enumerate(chunks):
-        embedding = [0.0] * 768  # placeholder
+    if not chunks:
+        return points
+        
+    texts_to_embed = [chunk["text"] for chunk in chunks]
+    embeddings = embedder.encode(texts_to_embed, show_progress_bar=False).tolist()
+    
+    for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
         payload = chunk["metadata"].copy()
         payload["text"] = chunk["text"]
-        points.append(PointStruct(id=idx, vector=embedding, payload=payload))
+        points.append(PointStruct(id=start_id + idx, vector=embedding, payload=payload))
     return points
 
 def ensure_collection(client: QdrantClient):
-    # Use collection_exists and create_collection to avoid deprecation
+    vector_size = embedder.get_sentence_embedding_dimension()
+    # Recreate the collection if it exists but the vector size does not match
+    if client.collection_exists(COLLECTION_NAME):
+        info = client.get_collection(COLLECTION_NAME)
+        current_size = info.config.params.vectors.size
+        if current_size != vector_size:
+            print(f"Deleting collection {COLLECTION_NAME} because its vector size {current_size} doesn't match model size {vector_size}")
+            client.delete_collection(COLLECTION_NAME)
+            
     if not client.collection_exists(COLLECTION_NAME):
         client.create_collection(
             collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=768, distance=Distance.COSINE)
+            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
         )
-        print(f"Created Qdrant collection {COLLECTION_NAME}")
+        print(f"Created Qdrant collection {COLLECTION_NAME} with vector size {vector_size}")
     else:
         print(f"Qdrant collection {COLLECTION_NAME} already exists")
 
@@ -139,23 +156,30 @@ def ingest_data(data_root: Path):
     client = QdrantClient(path=QDRANT_LOCAL_PATH)
     ensure_collection(client)
     all_points: List[PointStruct] = []
-    # Define file patterns to ingest (add more as needed)
+    
+    # Track point IDs globally across all documents to prevent overwriting
+    current_id = 0
+    
+    # Process both PDF and Markdown documents
     for ext in ("*.pdf"):
         for file_path in data_root.rglob(ext):
-            # Skip if not a regular file or if we lack permission
             try:
                 if not file_path.is_file():
                     continue
                 print(f"Processing {file_path}")
                 chunks = hierarchical_chunk(file_path)
-                points = embed_chunks(chunks)
+                points = embed_chunks(chunks, current_id)
                 all_points.extend(points)
+                current_id += len(points)
             except PermissionError as perm_err:
                 print(f"Skipping {file_path} due to permission error: {perm_err}")
                 continue
-    # Upsert in batches to avoid overload
-    print(f"all points {len(all_points)}")
-    batch_size = 5000
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+                continue
+                
+    print(f"Total points generated: {len(all_points)}")
+    batch_size = 100
     for i in range(0, len(all_points), batch_size):
         batch = all_points[i:i+batch_size]
         client.upsert(collection_name=COLLECTION_NAME, points=batch)
