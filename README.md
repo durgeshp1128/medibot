@@ -75,16 +75,30 @@ Access ui at http://localhost:5173/
 
 ### USAGE
 
-
 Example Query
 
 ```
 what is hospital policy for sick leave if fall ill in mid shift ?
+```
 
 ```
 Provide me detail report about total claim raised for cardiology department and how many of them are still in pending and how many of them are in rejected ?
+```
 
 ```
 show me internal diagnostic protocol that attending physicians are allowed to sign off.
+```
 
+Login Details
+
+```
+{
+    "alice": {"username": "alice", "password": "%Secret123", "role": "admin"},
+    "bob": {"username": "bob", "password": "%Password123", "role": "billing_executive"},
+    "dr.mehta": {"username": "dr.mehta", "password": "%Doctor123", "role": "doctor"},
+    "nurse.priya": {"username": "nurse.priya", "password": "%Nurse123", "role": "nurse"},
+    "billing.ravi": {"username": "billing.ravi", "password": "%Billing123", "role": "billing_executive"},
+    "tech.anand": {"username": "tech.anand", "password": "%Tech123", "role": "technician"},
+    "admin.sys": {"username": "admin.sys", "password": "%Admin123", "role": "admin"}
+}
 ```
