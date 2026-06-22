@@ -5,11 +5,10 @@
 
 - **Framework**: FastAPI
 - **Database**: Quadrant
-- **RAG**: LangChain
+- **RAG**: HyBrid RAG + SQL RAG
 - **Authentication**: JWT + OAuth2 Password Flow (planned)
 - **UI**: React (planned)
 
-## Getting Started
 
 ### Prerequisites
 
@@ -17,31 +16,27 @@
 - Requirements.txt
 
 ```
-# Web framework & server
-fastapi>=0.110.0
-uvicorn>=0.28.0
-python-multipart>=0.0.9
-
-# Document Processing
-docling>=1.0.0
-
-# Vector DB & Embeddings
-qdrant-client>=1.8.0
-sentence-transformers>=2.6.0
-cohere>=5.0.0             # Optional (if using cloud embeddings) or use HuggingFace open-source locally
-openai>=1.14.0            # For Cloud LLM / Inference API (or Anthropic/Groq)
-
-# Data processing & DB
-pydantic>=2.6.0
-pydantic-settings>=2.2.0
-sqlalchemy>=2.0.0
+fastapi
+uvicorn[standard]
+qdrant-client
+langchain
+torch
+sentence-transformers
+rank_bm25
+docling
+pypdf
+python-dotenv
+pyjwt
+sqlalchemy
+pandas
+python-jose
 ```
 
 ### Installation
 
 1. Clone the repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/your-org/medibot.git
 cd medibot
 ```
 
@@ -61,35 +56,35 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-## Project Structure
-
-```
-medibot-backend/
-├── data/
-│   ├── general/       # HR handbook, FAQs, etc.
-│   ├── clinical/      # Treatment protocols
-│   ├── nursing/       # Care guidelines
-│   ├── billing/       # Insurance references
-│   ├── equipment/     # Manuals & schedules
-│   └── mediassist.db  # Provided SQLite DB
-├── src/
-│   ├── __init__.py
-│   ├── config.py      # Environment variables & constants
-│   ├── ingestion.py   # Docling + chunking script
-│   ├── vector_db.py   # Qdrant client & Hybrid index configuration
-│   ├── search.py      # Dense + BM25 + Cross-Encoder Reranker
-│   ├── sql_rag.py     # SQL generation & execution chain
-│   └── main.py        # FastAPI application routers
-├── .env
-└── requirements.txt
-```
 
 ### Running the Server
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn main:app --reload --port 8000
 ```
 
 Access the API at `http://localhost:8000`
-View interactive docs at `http://localhost:8000/docs`
 
+### Running frontend
+
+```
+npm run dev
+
+Access ui at http://localhost:5173/
+```
+
+### USAGE
+
+
+Example Query
+
+```
+what is hospital policy for sick leave if fall ill in mid shift ?
+
+```
+Provide me detail report about total claim raised for cardiology department and how many of them are still in pending and how many of them are in rejected ?
+
+```
+show me internal diagnostic protocol that attending physicians are allowed to sign off.
+
+```

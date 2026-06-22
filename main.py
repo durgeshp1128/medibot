@@ -20,7 +20,7 @@ from chat_flow import process_chat
 _USERS = {
     "alice": {"username": "alice", "password": "@Secret123", "role": "admin"},
     "bob": {"username": "bob", "password": "@Password123", "role": "billing_executive"},
-    "dr.mehta": {"username": "dr.mehta", "password": "@doctor123", "role": "doctor"},
+    "dr.mehta": {"username": "dr.mehta", "password": "@Doctor123", "role": "doctor"},
     "nurse.priya": {"username": "nurse.priya", "password": "@Nurse123", "role": "nurse"},
     "billing.ravi": {"username": "billing.ravi", "password": "@Billing123", "role": "billing_executive"},
     "tech.anand": {"username": "tech.anand", "password": "@Tech123", "role": "technician"},
@@ -91,15 +91,28 @@ async def login(data: LoginRequest):
 
 
 @app.post("/chat")
-
 async def chat_endpoint(question: QuestionRequest, current_user: dict = Depends(get_current_user)):
     # Prepare payload for process_chat
     payload = {"question": question.question}
     result = process_chat(payload, current_user)
     return result
 
-@app.post("/sql_rag")
-async def sql_rag_endpoint(question: QuestionRequest, current_user: dict = Depends(get_current_user)):
-    from sql_rag import sql_rag_chain
-    answer = sql_rag_chain(question.question, current_user.get("role"))
-    return {"answer": answer}
+
+@app.get("/collections/{role}")
+async def get_collections_by_role(role: str, current_user: dict = Depends(get_current_user)):
+    role_lower = role.lower().strip()
+    
+    # Define collection-to-roles mapping matching ingest.py spec
+    COLLECTION_ROLE_MAP = {
+        "general": ["doctor", "nurse", "billing_executive", "technician", "admin"],
+        "clinical": ["doctor", "admin"],
+        "nursing": ["nurse", "doctor", "admin"],
+        "billing": ["billing_executive", "admin"],
+        "equipment": ["technician", "admin"],
+    }
+    
+    allowed_collections = [
+        col for col, roles in COLLECTION_ROLE_MAP.items() if role_lower in roles
+    ]
+    return {"collections": allowed_collections}
+
