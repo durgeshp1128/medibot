@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+./backend/data/
+./backend/qdrant_storage/
+./backend/.env
+./backend/.venv
+./data

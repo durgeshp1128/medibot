@@ -1,0 +1,13 @@
+fastembed
+sentence-transformers
+docling
+qdrant-client
+langchain-text-splitters
+langchain-qdrant
+langchain-huggingface
+fastapi[standard]
+pydantic-settings
+uvicorn[standard]
+langchain-groq
+python-dotenv
+langchain-openai
